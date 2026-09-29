@@ -33,6 +33,13 @@
     async signIn({ email, password }) {
       return unwrap(requireClient().auth.signInWithPassword({ email, password }));
     },
+    async signInAnonymously(inviteToken) {
+      const supabase = requireClient();
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw new Error(error.message);
+      if (data.session?.user?.is_anonymous) return { user: data.session.user };
+      return unwrap(supabase.auth.signInAnonymously({ options: { data: { invite_token: inviteToken } } }));
+    },
     async resetPassword(email) {
       const redirectTo = `${window.location.origin}${window.location.pathname}`;
       return unwrap(requireClient().auth.resetPasswordForEmail(email, { redirectTo }));

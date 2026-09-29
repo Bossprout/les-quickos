@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(14);
+select extensions.plan(16);
 
 select extensions.has_table('public', 'groups', 'groupes persistants');
 select extensions.has_table('public', 'group_members', 'adhésions aux groupes');
@@ -48,6 +48,15 @@ select extensions.throws_ok(
   'P0001',
   'Connexion requise.',
   'la création initiale exige une session authentifiée'
+);
+select extensions.ok(
+  exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'group_members_group_display_name_idx'),
+  'les noms choisis ne peuvent pas être dupliqués dans le groupe'
+);
+select extensions.is(
+  public.before_user_created_hook('{"user":{"is_anonymous":true,"user_metadata":{}}}'::jsonb) -> 'error' ->> 'http_code',
+  '403',
+  'une session anonyme sans invitation est refusée'
 );
 
 select * from extensions.finish();

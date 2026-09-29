@@ -13,6 +13,7 @@ let toastTimer;
 let groupChannel;
 let refreshTimer;
 let loadingUserId;
+let pendingAnonymousJoin = false;
 
 function setAuthMessage(message, success = false) {
   const element = $('#auth-message');
@@ -49,18 +50,28 @@ function setAuthMode(mode) {
 function showAuth({ onboarding = false, signedIn = false } = {}) {
   $('#app-shell').hidden = true;
   $('#auth-screen').hidden = false;
+  $('#anonymous-join-form').hidden = true;
   $('#auth-form').hidden = onboarding;
   $('#onboarding-form').hidden = !onboarding;
   $('#auth-switch-copy').hidden = signedIn || onboarding || passwordRecovery;
   $('#forgot-password').hidden = signedIn || onboarding || passwordRecovery || authMode === 'signup';
-  $('#signout-button').hidden = !signedIn;
+  $('#signout-button').hidden = !signedIn || Boolean(data.currentUser?.is_anonymous);
+  const inviteToken = new URLSearchParams(window.location.search).get('invite') || sessionStorage.getItem('quickos-invite') || '';
+  if (!onboarding && !signedIn && !passwordRecovery && inviteToken) {
+    $('#auth-form').hidden = true;
+    $('#auth-switch-copy').hidden = true;
+    $('#forgot-password').hidden = true;
+    $('#anonymous-join-form').hidden = false;
+    $('#auth-title').textContent = 'Tu es invité !';
+    $('#auth-description').textContent = 'Choisis ton nom pour rejoindre la bande, sans créer de compte.';
+    return;
+  }
   if (onboarding) {
-    const token = new URLSearchParams(window.location.search).get('invite') || sessionStorage.getItem('quickos-invite') || '';
-    if (token) $('#onboarding-form').elements.invite.value = token;
+    if (inviteToken) $('#onboarding-form').elements.invite.value = inviteToken;
     $('#onboarding-form').elements.groupName.value ||= 'Les Quickos';
     $('#auth-title').textContent = 'Encore une étape.';
     $('#auth-description').textContent = 'Crée le groupe ou rejoins tes amis avec leur invitation.';
-    $('#create-group-fields').hidden = Boolean(token);
+    $('#create-group-fields').hidden = Boolean(inviteToken);
   } else if (signedIn) {
     $('#auth-title').textContent = 'Ton compte est prêt.';
     $('#auth-description').textContent = 'Pour accéder au calendrier, crée le groupe initial ou rejoins-le avec un lien d’invitation.';
@@ -168,6 +179,8 @@ function renderHeader() {
   $('#friend-avatars').innerHTML = data.members.map((member) => avatar(member)).join('');
   document.querySelectorAll('.group-copy strong, .breadcrumb-group').forEach((element) => { element.textContent = data.group.name; });
   $('#profile-name').textContent = data.members.find((member) => member.id === data.myMemberId)?.name || data.currentUser?.email || 'Membre';
+  $('#session-end').hidden = Boolean(data.currentUser?.is_anonymous);
+  $('#profile-signout').hidden = Boolean(data.currentUser?.is_anonymous);
 }
 
 function render() {
@@ -243,6 +256,11 @@ async function activateSession(session) {
   try {
     const joined = await refreshGroupData();
     if (!joined) {
+      if (pendingAnonymousJoin) return;
+      if (session.user.is_anonymous && (new URLSearchParams(window.location.search).has('invite') || sessionStorage.getItem('quickos-invite'))) {
+        showAuth();
+        return;
+      }
       showAuth({ onboarding: true, signedIn: true });
       return;
     }
@@ -346,6 +364,30 @@ function bindEvents() {
       window.history.replaceState({}, '', url);
       await activateSession({ user: data.currentUser });
     } catch (error) { setAuthMessage(error.message); }
+  });
+
+  $('#anonymous-join-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const inviteToken = new URLSearchParams(window.location.search).get('invite') || sessionStorage.getItem('quickos-invite') || '';
+    const name = String(new FormData(event.currentTarget).get('name') || '').trim();
+    if (!inviteToken || !name) { setAuthMessage('Le lien d’invitation ou le nom est manquant.'); return; }
+    pendingAnonymousJoin = true;
+    setAuthMessage('Connexion au groupe…');
+    try {
+      const authResult = await QuickosBackend.signInAnonymously(inviteToken);
+      data.currentUser = authResult.user;
+      await QuickosBackend.joinGroup(inviteToken, name);
+      sessionStorage.removeItem('quickos-invite');
+      const url = new URL(window.location.href);
+      url.searchParams.delete('invite');
+      window.history.replaceState({}, '', url);
+      pendingAnonymousJoin = false;
+      await activateSession({ user: authResult.user });
+    } catch (error) {
+      pendingAnonymousJoin = false;
+      setAuthMessage(error.message);
+      showAuth();
+    }
   });
 
   $('#share-button').addEventListener('click', () => {

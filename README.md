@@ -1,6 +1,6 @@
 # Les Quickos
 
-Calendrier privé partagé et Secret Santa pour un seul groupe d’amis. L’application reste statique côté navigateur; Supabase fournit l’authentification e-mail/mot de passe, la base Postgres, les règles d’accès et les fonctions serveur protégées. GitHub Actions publie le site sur GitHub Pages.
+Calendrier partagé et Secret Santa pour un seul groupe d’amis. Le propriétaire se connecte avec son compte; les invités peuvent entrer sans e-mail ni mot de passe via une session Supabase anonyme. Supabase fournit la base Postgres, les règles d’accès et les fonctions serveur protégées. GitHub Actions publie le site sur GitHub Pages.
 
 ## Démarrage local
 
@@ -15,7 +15,7 @@ Pour lancer Supabase entièrement en local, installe Docker et la [Supabase CLI]
 ## Créer/configurer Supabase
 
 1. Crée un projet sur [supabase.com](https://supabase.com/) et garde les informations du projet dans ton gestionnaire de secrets. Le palier gratuit peut suffire pour un petit groupe; limites, disponibilité et conditions évoluent, et les projets gratuits peuvent être mis en pause après une période d’inactivité.
-2. Dans **SQL Editor**, exécute le contenu de `supabase/migrations/20260929000000_initial.sql` une seule fois. Cela crée les tables, les règles RLS, le contrôle d’inscription par invitation, les fonctions serveur et active Realtime pour les événements et les membres.
+2. Dans **SQL Editor**, exécute les fichiers du dossier `supabase/migrations` dans l’ordre de leur horodatage. Si tu as déjà appliqué la migration initiale précédente, n’exécute que `supabase/migrations/20260929100000_anonymous_invites.sql`. La première installe tables/RLS/fonctions; la seconde active les sessions anonymes par lien commun et l’unicité des noms.
 3. Autorise ton adresse comme premier administrateur du groupe en ajoutant seulement son empreinte à la liste privée. Remplace le texte factice par ta propre adresse dans SQL Editor :
 
 	```sql
@@ -24,13 +24,13 @@ Pour lancer Supabase entièrement en local, installe Docker et la [Supabase CLI]
 	```
 
 	Cette empreinte n’est utilisable qu’avant la création du groupe initial; elle est marquée comme utilisée à la création du groupe.
-4. Dans **Authentication → Hooks**, sélectionne **Before User Created** et la fonction Postgres `public.before_user_created_hook`. Cette étape est impérative : elle autorise uniquement le premier e-mail inscrit dans la liste ci-dessus, puis les inscriptions portant un lien d’invitation valide. Sans ce hook, ne publie pas le site.
-5. Dans **Authentication → Providers → Email**, active l’authentification e-mail/mot de passe et garde la confirmation d’adresse activée.
+4. Dans **Authentication → Hooks**, sélectionne **Before User Created** et la fonction Postgres `public.before_user_created_hook`. Cette étape est impérative : elle autorise le premier e-mail inscrit dans la liste, puis uniquement les créations de session accompagnées d’une invitation valide. Sans ce hook, ne publie pas le site.
+5. Dans **Authentication → Sign In / Providers**, active **Anonymous Sign-Ins** pour les invités et l’authentification e-mail/mot de passe pour le propriétaire. Garde la confirmation d’adresse activée pour les comptes e-mail.
 6. Dans **Authentication → URL Configuration**, choisis l’URL de ton site comme **Site URL** et ajoute les URL de redirection locales et de production (dont `http://localhost:8000/**` et `https://bossprout.github.io/les-quickos/**`). Mets à jour ces URL si le domaine change.
 7. Configure un fournisseur SMTP si les e-mails de confirmation/récupération par défaut sont limités. Les mots de passe et identifiants SMTP se configurent dans le tableau de bord du fournisseur, jamais dans le code ni dans cette conversation.
 8. Dans le projet Supabase, récupère **Project URL** et la clé publique **anon** ou **publishable**. N’utilise jamais `service_role`/`secret` côté client.
 
-Après avoir ajouté ton adresse dans la liste privée et activé le hook, crée ton compte avec cette adresse, confirme l’e-mail, puis crée le groupe. Tes amis suivent ensuite le lien généré dans **Inviter un ami**, choisissent leur e-mail et leur mot de passe, confirment leur adresse et rejoignent le groupe. Les inscriptions sans lien valide sont bloquées côté Supabase; un compte sans appartenance ne peut pas lire le calendrier.
+Après avoir ajouté ton adresse dans la liste privée et activé le hook, crée ton compte avec cette adresse, confirme l’e-mail, puis crée le groupe. Tes amis ouvrent le même lien généré dans **Inviter un ami**, choisissent leur nom et rejoignent le groupe sans compte e-mail ni mot de passe. Supabase crée une session anonyme persistante dans le navigateur. Le CAPTCHA n’est pas encore branché dans l’interface : garde le lien parmi tes amis pour les essais; avant une diffusion publique plus large, ajoute une protection CAPTCHA et active-la dans Supabase, car les sessions anonymes consomment des utilisateurs dans le projet.
 
 ## Publier sur Internet avec GitHub Pages
 
@@ -44,7 +44,9 @@ Selon le plan GitHub et la visibilité du dépôt, GitHub Pages peut imposer des
 ## Données et sécurité
 
 - Les événements sont lus/écrits par les membres authentifiés du groupe; RLS vérifie l’appartenance côté base, pas à partir d’un rôle fourni par la page.
-- Le premier utilisateur crée le groupe; les liens d’invitation sont des jetons aléatoires, stockés uniquement sous forme hachée, réutilisables au plus 30 fois et expirant après 14 jours. Traite le lien comme un secret et ne le publie pas.
+- Le premier utilisateur autorisé crée le groupe; les liens d’invitation sont des jetons aléatoires, stockés uniquement sous forme hachée, réutilisables au plus 30 fois et expirant après 14 jours. Traite le lien comme un secret et ne le publie pas.
+- Le lien commun ne prouve pas le nom choisi : une personne qui le reçoit peut prendre le nom d’un autre ami avant lui. La base empêche les noms dupliqués, mais ne peut pas vérifier les identités sans compte vérifié ou lien personnel. Ce mode est donc pour les essais entre personnes de confiance, pas pour garantir le secret d’un tirage face à un membre malveillant.
+- Une session anonyme est liée à ce navigateur/appareil. Si l’utilisateur efface les données du site ou change d’appareil, il peut perdre l’accès à son profil; il n’y a pas de récupération par e-mail.
 - Le tirage est créé côté base comme un cycle aléatoire sans auto-attribution. La table des correspondances n’accorde aucun accès direct au navigateur; une fonction vérifie l’utilisateur connecté et ne retourne que son destinataire. Seul le propriétaire peut relancer le tirage. L’arrivée d’un nouveau membre invalide le tirage en cours.
 - La clé publique Supabase n’est pas un secret; la sécurité repose sur RLS et les fonctions serveur. La clé `service_role`, les mots de passe et les jetons SMTP ne doivent jamais être inclus dans les fichiers web, l’historique Git ou les variables publiques.
 - Les anciennes données de démonstration `localStorage` ne sont pas importées dans la base.
@@ -55,8 +57,8 @@ Des contrôles de privilèges pgTAP sont fournis dans `supabase/tests/security.t
 
 | Test | Résultat attendu |
 |---|---|
-| Compte A crée le groupe; compte B rejoint avec une invitation valide | A et B voient le même calendrier et les mêmes membres |
-| Compte C, sans invitation, essaie de lire/écrire des événements | Aucune donnée du groupe n’est lisible ni modifiable |
+| Le propriétaire crée le groupe; B ouvre le lien commun, choisit un nom et entre anonymement | B voit le même calendrier et les mêmes membres sans saisir d’e-mail |
+| Un navigateur sans invitation tente une session anonyme ou une inscription | Création refusée par le hook Supabase |
 | Un membre ajoute un événement puis recharge sur un second appareil | L’événement est partagé; les changements d’événements/membres se synchronisent en direct |
 | Le propriétaire lance le Secret Santa; chaque membre révèle son résultat | Aucun auto-tirage; seul le résultat propre à la session est renvoyé |
 | Un membre appelle directement la table ou la fonction de résultat d’un autre | Lecture des attributions refusée; aucune fonction ne prend l’identifiant d’un autre participant |

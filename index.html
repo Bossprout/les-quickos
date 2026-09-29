@@ -11,6 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="auth.css" />
+    <link rel="stylesheet" href="invite-warning.css" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js" defer></script>
     <script src="backend.js" defer></script>
@@ -24,6 +25,11 @@
         <h1 id="auth-title">Retrouvons-nous<span>.</span></h1>
         <p class="subtitle" id="auth-description">Connectez-vous pour retrouver le calendrier de la bande.</p>
         <p class="setup-warning" id="setup-warning" hidden>Le service n’est pas encore configuré. Suivez les étapes d’installation du README pour connecter Supabase.</p>
+        <form id="anonymous-join-form" class="auth-form" hidden>
+          <label>Ton nom dans la bande<input name="name" maxlength="40" required autocomplete="nickname" placeholder="Ex. Camille" /></label>
+          <button class="primary-button auth-submit" type="submit">Entrer dans le groupe <span>→</span></button>
+          <p class="invite-caution">Lien commun = identité non vérifiée : une personne qui le possède peut choisir le nom d’un autre. Garde-le entre amis. Ta session reste dans ce navigateur; effacer ses données fait perdre cet accès.</p>
+        </form>
         <form id="auth-form" class="auth-form">
           <label id="auth-name-label" hidden>Ton prénom<input name="name" maxlength="40" autocomplete="name" placeholder="Ex. Camille" /></label>
           <label>Adresse e-mail<input name="email" type="email" autocomplete="email" required placeholder="toi@exemple.fr" /></label>
@@ -71,7 +77,7 @@
       </main>
     </div>
     <dialog id="event-dialog" class="modal"><form id="event-form" method="dialog"><div class="modal-heading"><div><span class="section-kicker">ON ORGANISE QUELQUE CHOSE</span><h2>Un nouveau moment<span>.</span></h2></div><button type="button" class="modal-close" data-close="event-dialog" aria-label="Fermer">×</button></div><label>On fait quoi ?<input name="title" maxlength="70" required placeholder="Ex. Dîner chez Léa" /></label><div class="form-row"><label>Quel jour ?<input name="date" type="date" required /></label><label>À quelle heure ?<input name="time" type="time" value="19:00" /></label></div><label>Où ça ? <span class="optional">(facultatif)</span><input name="place" maxlength="80" placeholder="Ex. Chez Max, Paris" /></label><label>Catégorie<select name="category"><option value="apero">🍷 Apéro</option><option value="diner">🍝 Dîner</option><option value="sortie">🎟️ Sortie</option><option value="anniversaire">🎂 Anniversaire</option><option value="autre">✨ Autre</option></select></label><button class="primary-button modal-submit" type="submit">Ajouter au calendrier <span>→</span></button></form></dialog>
-    <dialog id="members-dialog" class="modal"><div class="member-dialog-content"><div class="modal-heading"><div><span class="section-kicker">PLUS ON EST DE FOUS</span><h2>La bande<span>.</span></h2></div><button type="button" class="modal-close" data-close="members-dialog" aria-label="Fermer">×</button></div><p class="modal-copy">Les amis rejoignent le groupe avec un compte personnel et ce lien d’invitation.</p><div id="manage-members" class="manage-members"></div><button class="primary-button modal-submit" id="create-invite-button" type="button">Créer un lien d’invitation <span>↗</span></button><div class="invite-result" id="invite-result" hidden><label>Lien d’invitation<input id="invite-link" readonly /></label><button class="secondary-button" id="copy-invite-button" type="button">Copier le lien</button><p class="auth-help">Ce lien permet de rejoindre le groupe. Partage-le uniquement avec tes amis.</p></div></div></dialog>
+    <dialog id="members-dialog" class="modal"><div class="member-dialog-content"><div class="modal-heading"><div><span class="section-kicker">PLUS ON EST DE FOUS</span><h2>La bande<span>.</span></h2></div><button type="button" class="modal-close" data-close="members-dialog" aria-label="Fermer">×</button></div><p class="modal-copy">Tes amis ouvrent le lien commun et choisissent leur nom, sans compte. Attention : l’identité n’est pas vérifiée, donc ce mode est adapté aux essais entre personnes de confiance.</p><div id="manage-members" class="manage-members"></div><button class="primary-button modal-submit" id="create-invite-button" type="button">Créer un lien d’invitation <span>↗</span></button><div class="invite-result" id="invite-result" hidden><label>Lien d’invitation<input id="invite-link" readonly /></label><button class="secondary-button" id="copy-invite-button" type="button">Copier le lien</button><p class="auth-help">Ce lien permet de rejoindre le groupe. Partage-le uniquement avec tes amis.</p></div></div></dialog>
     <dialog id="reveal-dialog" class="modal reveal-modal"><div class="reveal-content"><button type="button" class="modal-close" data-close="reveal-dialog" aria-label="Fermer">×</button><span class="section-kicker">TON SECRET SANTA</span><div class="reveal-gift">🎁</div><p id="reveal-for" class="reveal-for"></p><h2 id="reveal-name"></h2><p class="reveal-reminder">Chut… c'est un secret 🤫</p><button class="secondary-button" data-close="reveal-dialog">Garder le secret</button></div></dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </body>
