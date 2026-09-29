@@ -1,0 +1,52 @@
+name: Deploy Les Quickos to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: ${{ vars.SUPABASE_URL != '' && vars.SUPABASE_ANON_KEY != '' }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate Supabase configuration
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "Configure repository variables SUPABASE_URL and SUPABASE_ANON_KEY before deploying." >&2
+            exit 1
+          fi
+          node -e 'const fs = require("node:fs"); const config = { supabaseUrl: process.env.SUPABASE_URL, supabaseAnonKey: process.env.SUPABASE_ANON_KEY }; fs.writeFileSync("config.js", `window.QUICKOS_CONFIG = ${JSON.stringify(config)};\n`);'
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  setup-required:
+    if: ${{ vars.SUPABASE_URL == '' || vars.SUPABASE_ANON_KEY == '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain required setup
+        run: echo "Deployment skipped. Add the SUPABASE_URL and SUPABASE_ANON_KEY repository variables, enable GitHub Pages with GitHub Actions, then run this workflow again."
