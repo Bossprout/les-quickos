@@ -19,13 +19,13 @@
   const api = {
     configured,
     client,
-    async signUp({ name, email, password }) {
+    async signUp({ name, email, password, inviteToken }) {
       const supabase = requireClient();
       return unwrap(supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { display_name: name },
+          data: { display_name: name, ...(inviteToken ? { invite_token: inviteToken } : {}) },
           emailRedirectTo: window.location.href,
         },
       }));

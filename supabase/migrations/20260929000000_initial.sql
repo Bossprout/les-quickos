@@ -3,6 +3,13 @@ create schema if not exists private;
 revoke all on schema private from public, anon, authenticated;
 grant usage on schema private to authenticated;
 
+create table private.initial_owner_allowlist (
+  email_hash text primary key,
+  claimed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+revoke all on private.initial_owner_allowlist from public, anon, authenticated, supabase_auth_admin;
+
 create table public.groups (
   id uuid primary key default gen_random_uuid(),
   name text not null check (char_length(trim(name)) between 2 and 60),
@@ -158,10 +165,19 @@ begin
   if exists (select 1 from public.groups) then
     raise exception 'Le groupe existe déjà. Rejoins-le avec un lien d’invitation.';
   end if;
+  if not exists (
+    select 1 from private.initial_owner_allowlist allowlist
+    where allowlist.email_hash = encode(extensions.digest(convert_to(lower(auth.jwt() ->> 'email'), 'UTF8'), 'sha256'), 'hex')
+      and allowlist.claimed_at is null
+  ) then raise exception 'Ce compte n’est pas autorisé à créer le groupe initial.'; end if;
   member_name := coalesce(nullif(trim(auth.jwt() -> 'user_metadata' ->> 'display_name'), ''), split_part(auth.jwt() ->> 'email', '@', 1));
   insert into public.groups(name, owner_user_id) values (clean_name, current_user_id) returning id into new_group_id;
   insert into public.group_members(group_id, user_id, display_name, role)
     values (new_group_id, current_user_id, left(member_name, 40), 'owner');
+  update private.initial_owner_allowlist
+    set claimed_at = now()
+    where email_hash = encode(extensions.digest(convert_to(lower(auth.jwt() ->> 'email'), 'UTF8'), 'sha256'), 'hex')
+      and claimed_at is null;
   return new_group_id;
 end;
 $$;
@@ -299,6 +315,37 @@ begin
 end;
 $$;
 
+create or replace function public.before_user_created_hook(event jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, public, private, extensions
+as $$
+declare
+  signup_email text := lower(trim(event -> 'user' ->> 'email'));
+  invite_token text := event -> 'user' -> 'user_metadata' ->> 'invite_token';
+begin
+  if signup_email is null or signup_email = '' then
+    return jsonb_build_object('error', jsonb_build_object('http_code', 400, 'message', 'Une adresse e-mail est requise.'));
+  end if;
+
+  if not exists (select 1 from public.groups) then
+    if exists (
+      select 1 from private.initial_owner_allowlist allowlist
+      where allowlist.email_hash = encode(extensions.digest(convert_to(signup_email, 'UTF8'), 'sha256'), 'hex')
+        and allowlist.claimed_at is null
+    ) then return '{}'::jsonb; end if;
+  elsif invite_token is not null and exists (
+    select 1 from public.group_invites invitation
+    where invitation.token_hash = encode(extensions.digest(convert_to(invite_token, 'UTF8'), 'sha256'), 'hex')
+      and invitation.expires_at > now() and invitation.uses < invitation.max_uses
+  ) then return '{}'::jsonb;
+  end if;
+
+  return jsonb_build_object('error', jsonb_build_object('http_code', 403, 'message', 'La création du compte nécessite une invitation du groupe.'));
+end;
+$$;
+
 revoke all on function public.get_my_group() from public, anon;
 revoke all on function private.is_group_member(uuid) from public, anon;
 revoke all on function public.create_initial_group(text) from public, anon;
@@ -307,6 +354,7 @@ revoke all on function public.redeem_group_invite(text, text) from public, anon;
 revoke all on function public.get_my_santa_status() from public, anon;
 revoke all on function public.start_santa_draw() from public, anon;
 revoke all on function public.reveal_my_santa() from public, anon;
+revoke all on function public.before_user_created_hook(jsonb) from public, anon, authenticated;
 grant execute on function public.get_my_group() to authenticated;
 grant execute on function private.is_group_member(uuid) to authenticated;
 grant execute on function public.create_initial_group(text) to authenticated;
@@ -315,6 +363,8 @@ grant execute on function public.redeem_group_invite(text, text) to authenticate
 grant execute on function public.get_my_santa_status() to authenticated;
 grant execute on function public.start_santa_draw() to authenticated;
 grant execute on function public.reveal_my_santa() to authenticated;
+grant usage on schema public to supabase_auth_admin;
+grant execute on function public.before_user_created_hook(jsonb) to supabase_auth_admin;
 
 do $$
 begin

@@ -27,7 +27,9 @@ function setAuthMode(mode) {
   $('#auth-name-label').querySelector('input').required = signingUp;
   $('#auth-submit').innerHTML = signingUp ? 'Créer mon compte <span>→</span>' : 'Se connecter <span>→</span>';
   $('#auth-title').textContent = signingUp ? 'Bienvenue chez nous.' : 'Retrouvons-nous.';
-  $('#auth-description').textContent = signingUp ? 'Crée ton compte avec ton adresse e-mail et ton mot de passe.' : 'Connecte-toi pour retrouver le calendrier de la bande.';
+  $('#auth-description').textContent = signingUp
+    ? 'Crée ton compte depuis le lien d’invitation reçu. Le premier compte doit utiliser l’adresse autorisée du groupe.'
+    : 'Connecte-toi pour retrouver le calendrier de la bande.';
   $('#auth-switch-copy').innerHTML = signingUp
     ? 'Déjà un compte ? <button class="auth-link" id="auth-switch" type="button">Se connecter</button>'
     : 'Pas encore de compte ? <button class="auth-link" id="auth-switch" type="button">Créer un compte</button>';
@@ -293,7 +295,8 @@ function bindEvents() {
         setAuthMessage('Mot de passe mis à jour. Tu peux te connecter.', true);
       } else if (authMode === 'signup') {
         const name = String(fields.get('name')).trim();
-        const result = await QuickosBackend.signUp({ name, email, password });
+        const inviteToken = new URLSearchParams(window.location.search).get('invite') || sessionStorage.getItem('quickos-invite') || '';
+        const result = await QuickosBackend.signUp({ name, email, password, inviteToken });
         if (!result.session) setAuthMessage('Compte créé. Vérifie ta boîte mail pour confirmer ton adresse avant de te connecter.', true);
       } else {
         await QuickosBackend.signIn({ email, password });
